@@ -10,50 +10,90 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @Query(sort: \Habit.dateAdded, order: .forward) private var habits: [Habit]
+    @State private var showingAddHabit = false
+    @State private var lastResetDate = UserDefaults.standard.object(forKey: "lastResetDate") as? Date ?? Date()
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
+            NavigationStack {
+                List {
+                    ForEach(habits) { habit in
+                        NavigationLink(destination: HabitDetailView(habit: habit)) {
+                            HStack {
+                                Text(habit.name)
+                                    .font(.headline)
+                                Spacer()
+                                Image(systemName: habit.completed ? "checkmark.circle.fill" : "circle")
+                                    .foregroundColor(habit.completed ? .green : .gray)
+                                    .onTapGesture {
+                                        withAnimation {
+                                            habit.completed.toggle()
+                                        }
+                                    }
+                            }
+                            .padding(.vertical, 8)
+                        }
+                    }
+                    .onDelete(perform: deleteHabit)
+                }
+                .navigationTitle("Habit Tracker")
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        HStack {
+                            EditButton()
+                            Button("Reset") {
+                                resetHabits()
+                            }
+                        }
+                    }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(action: {
+                            showingAddHabit = true
+                        }) {
+                            Image(systemName: "plus")
+                        }
                     }
                 }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
+                .sheet(isPresented: $showingAddHabit) {
+                    AddHabitView()
                 }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
+                .onAppear {
+                    checkForDailyReset()
                 }
             }
-        } detail: {
-            Text("Select an item")
         }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
+        
+        // MARK: - Functions
+        
+        /// Deletes habits at the given offsets from the habits array.
+        func deleteHabit(at offsets: IndexSet) {
+            withAnimation {
+                for index in offsets {
+                    let habit = habits[index]
+                    modelContext.delete(habit)
+                }
+            }
         }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
+        
+        /// Resets the completion status of all habits and updates the last reset date.
+        func resetHabits() {
+            withAnimation {
+                for habit in habits {
+                    habit.completed = false
+                }
+            }
+            lastResetDate = Date()
+            UserDefaults.standard.set(lastResetDate, forKey: "lastResetDate")
+        }
+        
+        /// Checks if the last reset date is not today and resets habits if necessary.
+        func checkForDailyReset() {
+            let calendar = Calendar.current
+            if !calendar.isDateInToday(lastResetDate) {
+                resetHabits()
             }
         }
     }
-}
 
 #Preview {
     ContentView()
